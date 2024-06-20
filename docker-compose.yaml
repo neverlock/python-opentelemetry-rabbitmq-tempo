@@ -34,6 +34,11 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    healthcheck:
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 5s
+      timeout: 5s
+      retries: 3
 
   prometheus:
     image: prom/prometheus:latest
@@ -62,9 +67,8 @@ services:
     build:
       context: ./producer
     depends_on:
-      - rabbitmq
-      - prometheus
-      - tempo
+      rabbitmq:
+        condition: service_healthy
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=tempo:4317
         #    - CLOUDAMQP_URL=amqp://guest:guest@rabbitmq/%2f
@@ -75,9 +79,8 @@ services:
     build:
       context: ./consumer
     depends_on:
-      - rabbitmq
-      - prometheus
-      - tempo
+      rabbitmq:
+        condition: service_healthy
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=tempo:4317
       - PYTHONUNBUFFERED=1
@@ -87,7 +90,8 @@ services:
     build:
       context: ./next_api
     depends_on:
-      - tempo
+      rabbitmq:
+        condition: service_healthy
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=tempo:4317
       - PYTHONUNBUFFERED=1
