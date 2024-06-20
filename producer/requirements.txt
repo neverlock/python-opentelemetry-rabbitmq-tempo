@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pika
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation-pika
+opentelemetry-instrumentation-fastapi
+opentelemetry-exporter-otlp
+opentelemetry-propagator-b3
+requests
+
