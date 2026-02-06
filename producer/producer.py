@@ -120,7 +120,7 @@ async def send_task(task: TaskMessage):
             }
         except Exception as e:
             print(f"Error sending message: {e}")
-            span.status = trace.Status(trace.StatusCode.ERROR)
+            span.set_status(trace.Status(trace.StatusCode.ERROR))
             span.record_exception(e)
             # Force close connection to trigger reconnect next time
             if connection and not connection.is_closed:

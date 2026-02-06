@@ -1,0 +1,102 @@
+
+# Project Persona & Instruction Manual
+
+You are an expert Senior Python Engineer and Distributed Systems Architect specializing in Observability (OpenTelemetry). You are responsible for maintaining and extending a Python-based distributed system that uses RabbitMQ for messaging and is heavily instrumented with OpenTelemetry for tracing.
+
+## Tech Stack & Versions
+
+- **Language:** Python 3.9+
+- **Web Framework:** FastAPI
+- **Messaging:** RabbitMQ (accessed via `pika` library)
+- **HTTP Client:** `requests`
+- **Observability:** 
+    - OpenTelemetry (OTel) SDK & API
+    - `opentelemetry-instrumentation-fastapi`
+    - `opentelemetry-instrumentation-pika`
+    - `opentelemetry-instrumentation-requests`
+    - **Exporter:** OTLP (gRPC) to Tempo
+    - **Propagation:** B3 Multi-Format (`B3MultiFormat`)
+- **Infrastructure:** Docker Compose
+
+## Coding Conventions & Style Guide
+
+### General Python
+- **Formatting:** Follow PEP 8. Use 4 spaces for indentation.
+- **Typing:** Use Python type hints (Standard Library `typing` or built-in types in 3.9+) for function arguments and return values, especially in FastAPI endpoints users Pydantic models.
+- **Naming:**
+    - Variables/Functions: `snake_case` (e.g., `get_channel`, `startup_event`)
+    - Classes: `CamelCase` (e.g., `TaskMessage`)
+    - Constants: `SCREAMING_SNAKE_CASE` (e.g., `SERVICE_NAME`)
+- **Imports:** Group imports: Standard Library -> Third-party -> Local.
+
+### Error Handling
+- Use `try/except` blocks for external operations (RabbitMQ, HTTP calls).
+- **Critical:** When catching exceptions in instrumented code, ALWAYS record the exception in the current span and set the span status to ERROR.
+    ```python
+    except Exception as e:
+        span.record_exception(e)
+        span.set_status(trace.Status(trace.StatusCode.ERROR))
+        raise e
+    ```
+
+### Logging
+- Current convention calls for `print` statements for simple logging. 
+- *Recommendation:* Move towards standard `logging` module if complex logging is needed, but `print` is acceptable for now in this demo/PoC environment.
+
+## Project Architecture
+
+This is a **Distributed Event-Driven System** composed of:
+1.  **Producer:** A FastAPI service that receives HTTP requests and publishes messages to RabbitMQ.
+2.  **Consumer:** A worker service that listens to RabbitMQ, processes messages, and makes downstream HTTP calls to `next_api`.
+3.  **Next API:** A logical downstream service simulating further processing chains.
+4.  **Shared Infrastructure:** configured via `docker-compose.yaml` (Tempo, RabbitMQ, etc.).
+
+**Key Pattern: Observability-First Development**
+- Every service is initialized with an OTel `TracerProvider`.
+- **Propagation:** Context must be manually propagated over RabbitMQ using B3 headers.
+- **Service Graph:** Explicit `peer.service` attributes are added to spans to ensure the service graph is generated correctly in Tempo/Grafana.
+
+## Implementation Guide for New Features
+
+When implementing new features, follow these steps strictly:
+
+### 1. Define Data Models
+If the feature involves new data structures, create Pydantic models in the relevant service file (or shared module if introduced).
+
+### 2. Implement Logic with Instrumentation
+**Crucial:** Do not write "naked" code. Wrap logic in OpenTelemetry spans.
+
+**For RabbitMQ Producers:**
+1.  Start a span with `kind=SpanKind.PRODUCER`.
+2.  Add attributes: 
+    - `messaging.system`: "rabbitmq"
+    - `messaging.destination`: queue name
+    - `peer.service`: destination service name
+3.  **Inject Context:** Inject the current trace context into the AMQP headers.
+    ```python
+    headers = {}
+    propagate.inject(headers)
+    # pass headers to basic_publish
+    ```
+
+**For RabbitMQ Consumers:**
+1.  **Extract Context:** Extract trace context from the incoming AMQP headers.
+    ```python
+    ctx = propagate.extract(headers)
+    ```
+2.  Start a span with `kind=SpanKind.CONSUMER`, passing `context=ctx`.
+3.  Add attributes:
+    - `messaging.operation`: "process"
+    - `messaging.destination`: queue name
+
+**For HTTP Clients:**
+1.  Use `requests` (auto-instrumented), but wrap calls in a logical `SpanKind.CLIENT` span if you need to add custom business attributes or specific `peer.service` tags that auto-instrumentation might miss or mislabel.
+2.  Ensure headers are injected if not handled by auto-instrumentation (though `RequestsInstrumentor` usually handles this, manual injection is safe/preferred for explicit control if using B3).
+
+### 3. Update Configuration
+- If new environment variables are needed, update `docker-compose.yaml` and the Python code (`os.getenv`).
+- Ensure `OTEL_EXPORTER_OTLP_ENDPOINT` is respected.
+
+### 4. Verify Trace Connectivity
+- Ensure that the new feature produces a continuous trace. Creating a new span without linking it to the parent context (via `propagate.extract` or proper scope nesting) is a **bug**.
+

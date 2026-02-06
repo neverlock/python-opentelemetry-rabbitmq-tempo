@@ -13,18 +13,18 @@ services:
       - ./tempo-data:/var/tempo
 
   tempo:
-    image: grafana/tempo:latest
+    image: grafana/tempo:2.4.1
     command: [ "-config.file=/etc/tempo.yaml" ]
     volumes:
       - ./shared/tempo.yaml:/etc/tempo.yaml
       - ./tempo-data:/var/tempo
     ports:
-      - "14268:14268" # jaeger ingest
-      - "3200:3200" # tempo
-      - "9095:9095" # tempo grpc
-      - "4317:4317" # otlp grpc
-      - "4318:4318" # otlp http
-      - "9411:9411" # zipkin
+      - "34268:14268" # jaeger ingest
+      - "33200:3200"  # tempo search
+      - "39095:9095"  # tempo grpc
+      - "34317:4317"  # otlp grpc
+      - "34318:4318"  # otlp http
+      - "39411:9411"  # zipkin
     depends_on:
       - init
 
@@ -32,8 +32,8 @@ services:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "35672:5672"   # AMQP
+      - "45672:15672"  # Management
     healthcheck:
       test: rabbitmq-diagnostics check_port_connectivity
       interval: 5s
@@ -49,7 +49,7 @@ services:
     volumes:
       - ./shared/prometheus.yaml:/etc/prometheus.yaml
     ports:
-      - "9090:9090"
+      - "39090:9090"
 
   grafana:
     image: grafana/grafana:11.0.0
@@ -61,7 +61,7 @@ services:
       - GF_AUTH_DISABLE_LOGIN_FORM=true
       - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor traceQLStreaming metricsSummary
     ports:
-      - "3000:3000"
+      - "33000:3000"
 
   producer:
     build:
@@ -74,11 +74,12 @@ services:
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=tempo:4317 #    - CLOUDAMQP_URL=amqp://guest:guest@rabbitmq/%2f
     ports:
-      - "8000:8000"
+      - "38000:8000"
 
   consumer:
     build:
       context: ./consumer
+    restart: on-failure
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -100,4 +101,4 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=tempo:4317
       - PYTHONUNBUFFERED=1
     ports:
-      - "8001:8001"
+      - "38001:8001"
